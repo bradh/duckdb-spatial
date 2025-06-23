@@ -28,6 +28,8 @@ public:
                                                FunctionData *bind_data);
     static LocalState &ResetAndGet(ExpressionState &state);
 
+    void Deserialize(const string_t &blob, sgl::geometry &geom);
+
     string_t Serialize(Vector &vector, const sgl::geometry &geom);
 
     GeometryAllocator &GetAllocator() {
@@ -48,6 +50,11 @@ LocalState &LocalState::ResetAndGet(ExpressionState &state) {
     auto &local_state = ExecuteFunctionState::GetFunctionState(state)->Cast<LocalState>();
     local_state.arena.Reset();
     return local_state;
+}
+
+
+void LocalState::Deserialize(const string_t &blob, sgl::geometry &geom) {
+    Serde::Deserialize(geom, arena, blob.GetDataUnsafe(), blob.GetSize());
 }
 
 string_t LocalState::Serialize(Vector &vector, const sgl::geometry &geom) {
@@ -167,12 +174,114 @@ struct ST_TileEnvelope {
     }
 };
 
+struct ST_AsMVTGeom{
+    static void Execute(DataChunk &args, ExpressionState &state, Vector &result) {
+        auto &lstate = LocalState::ResetAndGet(state);
+
+        BinaryExecutor::ExecuteWithNulls<string_t, string_t, string_t>(
+            args.data[0], args.data[1], result, args.size(),
+            [&](const string_t &geom, const string_t &bounds, ValidityMask &mask, const idx_t row_idx) {
+                sgl::geometry sgl_geom;
+                lstate.Deserialize(geom, sgl_geom);
+                sgl::geometry sgl_bounds;
+                lstate.Deserialize(bounds, sgl_bounds);
+                // TODO: sanity check bounds
+                auto bounds_bbox = sgl::extent_xy::smallest();
+		        if (sgl::ops::get_total_extent_xy(sgl_bounds, bounds_bbox) != 5) {
+                    throw InvalidInputException("ST_AsMVTGeom: invalid bounds geometry");
+                }
+                double bounds_width = bounds_bbox.max.x - bounds_bbox.min.x;
+                double bounds_height = bounds_bbox.max.y - bounds_bbox.min.y;
+                // TODO: check for empty input geometry
+                // TODO: there is a method on the geom
+                // bool is_empty() const;
+
+                sgl::geometry mvt_geom;
+                sgl::vertex_xy input_vertex;
+                sgl::vertex_xy output_vertex;
+                switch (sgl_geom.get_type()) {
+                    case sgl::geometry_type::POINT:
+                        input_vertex = sgl_geom.get_vertex_xy(0);
+                        output_vertex.x = nearbyint((input_vertex.x - bounds_bbox.min.x) * 4096.0 / bounds_width);
+                        if (output_vertex.x == -0) {
+                            output_vertex.x = 0;
+                        }
+                        output_vertex.y = nearbyint(4096 - ((input_vertex.y - bounds_bbox.min.y) * 4096.0 / bounds_height));
+                        if (output_vertex.y == -0) {
+                            output_vertex.y = 0;
+                        }
+                        if ((output_vertex.x > -256) && (output_vertex.x < (4096 + 256)) && (output_vertex.y > -256) && (output_vertex.y < 4096 + 256)) {
+                            mvt_geom.set_type(sgl::geometry_type::POINT);
+                            mvt_geom.set_vertex_array(&output_vertex, 1);
+                        } else {
+                            mask.SetInvalid(row_idx);
+                            return string_t {};
+                        }
+                        break;
+                    default:
+                        printf("Unsupported geometry type: %u\n", (uint8_t)sgl_geom.get_type());
+                        mask.SetInvalid(row_idx);
+                        return string_t {};
+                }
+
+            // TODO: affine transformation into tile coordinate space
+            // There is an method for this:
+            // void affine_transform(sgl::allocator *alloc, sgl::geometry *geom, const sgl::affine_matrix *matrix);
+            // But we can probably do it directly
+
+            // TODO: Snap to integer precision, removing duplicate points
+
+            // TODO: Remove points on straight lines
+
+            // TODO: Remove duplicates in multipoints
+
+            // TODO: check for empty geometry
+
+            // TODO: clip and validate
+
+            // TODO: check for empty geometry
+                return lstate.Serialize(result, mvt_geom);
+            });
+    }
+
+    //------------------------------------------------------------------------------------------------------------------
+    // Documentation
+    //------------------------------------------------------------------------------------------------------------------
+    static constexpr auto DESCRIPTION = R"(
+    )";
+    static constexpr auto EXAMPLE = R"(
+    )";
+
+    //------------------------------------------------------------------------------------------------------------------
+    // Register
+    //------------------------------------------------------------------------------------------------------------------
+    static void Register(DatabaseInstance &db) {
+        FunctionBuilder::RegisterScalar(db, "ST_AsMVTGeom", [](ScalarFunctionBuilder &func) {
+            func.AddVariant([](ScalarFunctionVariantBuilder &variant) {
+                variant.AddParameter("geom", GeoTypes::GEOMETRY());
+                variant.AddParameter("bounds", GeoTypes::GEOMETRY());
+                variant.SetReturnType(GeoTypes::GEOMETRY());
+                variant.SetInit(LocalState::Init);
+                variant.SetFunction(Execute);
+            });
+
+            func.SetDescription(DESCRIPTION);
+            func.SetExample(EXAMPLE);
+
+            func.SetTag("ext", "spatial");
+            func.SetTag("category", "conversion");
+        });
+    }
+};
+
+
 } // namespace
 //------------------------------------------------------------------------------
 //  Register
 //------------------------------------------------------------------------------
 void RegisterMapboxVectorTileModule(DatabaseInstance &db) {
     ST_TileEnvelope::Register(db);
+    ST_AsMVTGeom::Register(db);
 };
 
 } // namespace duckdb

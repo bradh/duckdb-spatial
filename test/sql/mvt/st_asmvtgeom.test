@@ -1,0 +1,52 @@
+# name: test/sql/mvt/st_asmvtgeom.test
+# group [mvt]
+
+require spatial
+
+statement ok
+PRAGMA enable_verification
+
+query I
+SELECT ST_AsText(ST_AsMVTGeom(ST_GeomFromText('POINT (0 0)'), ST_TileEnvelope(0, 0, 0) ) );
+----
+POINT (2048 2048)
+
+query I
+SELECT ST_AsText(ST_AsMVTGeom(ST_GeomFromText('POINT (0 0)'), ST_TileEnvelope(1, 0, 0) ) );  
+----
+POINT (4096 4096)
+
+query I
+SELECT ST_AsText(ST_AsMVTGeom(ST_GeomFromText('POINT (0 0)'), ST_TileEnvelope(1, 1, 0) ) );
+----
+POINT (0 4096)
+
+query I
+SELECT ST_AsText(ST_AsMVTGeom(ST_GeomFromText('POINT (0 0)'), ST_TileEnvelope(1, 1, 1) ) );
+----
+POINT (0 0)
+
+query I
+SELECT ST_AsText(ST_AsMVTGeom(ST_GeomFromText('POINT (0 0)'), ST_TileEnvelope(1, 0, 1) ) );
+----
+POINT (4096 0)
+
+query I
+SELECT ST_AsText(ST_AsMVTGeom(ST_GeomFromText('POINT (8015492.53 16121486.51)'), ST_TileEnvelope(15, 22938, 3201) ) );
+----
+POINT (0 4096)
+
+query I
+SELECT ST_AsText(ST_AsMVTGeom(ST_GeomFromText('POINT (8016715.5 16122709.5)'), ST_TileEnvelope(15, 22938, 3201) ) ); 
+----
+POINT (4096 0)
+
+query I
+SELECT ST_IsEmpty( ST_AsMVTGeom(ST_GeomFromText('POINT (0 0)'), ST_TileEnvelope(15, 22938, 3201) ) ); 
+----
+TRUE;
+
+query I
+SELECT ST_AsText( ST_AsMVTGeom(ST_GeomFromText('POINT (0 0)'), ST_TileEnvelope(15, 22938, 3201) ) ); 
+----
+NULL
