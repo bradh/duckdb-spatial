@@ -198,7 +198,8 @@ struct ST_AsMVTGeom{
 
                 sgl::geometry mvt_geom;
                 sgl::vertex_xy input_vertex;
-                sgl::vertex_xy* output_vertices = new sgl::vertex_xy[sgl_geom.get_vertex_count()]; 
+                sgl::vertex_xy* output_vertices = new sgl::vertex_xy[sgl_geom.get_vertex_count()];
+                uint32_t output_vertex_index = 0;
                 switch (sgl_geom.get_type()) {
                     case sgl::geometry_type::POINT:
                         input_vertex = sgl_geom.get_vertex_xy(0);
@@ -222,15 +223,25 @@ struct ST_AsMVTGeom{
                     case sgl::geometry_type::LINESTRING:
                         for (uint32_t i = 0; i < sgl_geom.get_vertex_count(); i++) {
                             input_vertex = sgl_geom.get_vertex_xy(i);
-                            output_vertices[i].x = nearbyint((input_vertex.x - bounds_bbox.min.x) * 4096.0 / bounds_width);
-                            if (output_vertices[i].x == -0) {
-                                output_vertices[i].x = 0;
+                            output_vertices[output_vertex_index].x = nearbyint((input_vertex.x - bounds_bbox.min.x) * 4096.0 / bounds_width);
+                            if (output_vertices[output_vertex_index].x == -0) {
+                                output_vertices[output_vertex_index].x = 0;
                             }
-                            output_vertices[i].y = nearbyint(4096 - ((input_vertex.y - bounds_bbox.min.y) * 4096.0 / bounds_height));
-                            if (output_vertices[i].y == -0) {
-                                output_vertices[i].y = 0;
+                            output_vertices[output_vertex_index].y = nearbyint(4096 - ((input_vertex.y - bounds_bbox.min.y) * 4096.0 / bounds_height));
+                            if (output_vertices[output_vertex_index].y == -0) {
+                                output_vertices[output_vertex_index].y = 0;
+                            }
+                            if (output_vertex_index == 0) {
+                                output_vertex_index += 1;
+                            } else if ((output_vertices[output_vertex_index].x != output_vertices[output_vertex_index - 1].x) || (output_vertices[output_vertex_index].y != output_vertices[output_vertex_index - 1].y)) {
+                                output_vertex_index += 1;
                             }
                             // TODO: clip linestring
+                        }
+                        if (output_vertex_index < 2) {
+                            mask.SetInvalid(row_idx);
+                            delete[] output_vertices;
+                            return string_t {};
                         }
                         mvt_geom.set_type(sgl::geometry_type::LINESTRING);
                         mvt_geom.set_vertex_array(output_vertices, sgl_geom.get_vertex_count());

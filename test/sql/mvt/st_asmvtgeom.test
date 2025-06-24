@@ -47,7 +47,17 @@ SELECT ST_IsEmpty( ST_AsMVTGeom(ST_GeomFromText('POINT (0 0)'), ST_TileEnvelope(
 TRUE;
 
 query I
-SELECT ST_AsText( ST_AsMVTGeom(ST_GeomFromText('POINT (0 0)'), ST_TileEnvelope(15, 22938, 3201) ) ); 
+SELECT ST_AsText( ST_AsMVTGeom(ST_GeomFromText('POINT (0 0)'), ST_TileEnvelope(15, 22938, 3201) ) );
+----
+NULL
+
+query I
+SELECT ST_AsText(ST_AsMVTGeom(ST_GeomFromText('LINESTRING (0 0, 10000 10000)'), ST_TileEnvelope(0, 0, 0) ) );
+----
+LINESTRING (2048 2048, 2049 2047)
+
+query I
+SELECT ST_AsText(ST_AsMVTGeom(ST_GeomFromText('LINESTRING (0 0, 1000 100)'), ST_TileEnvelope(0, 0, 0) ) );
 ----
 NULL
 
@@ -60,3 +70,4 @@ query I
 SELECT ST_AsText(ST_AsMVTGeom(ST_GeomFromText('LINESTRING (0 10000, 10000000 -200000)'), ST_TileEnvelope(2, 2, 2) ) );
 ----
 LINESTRING (0 -4, 4088 82)
+
