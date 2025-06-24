@@ -187,7 +187,7 @@ struct ST_AsMVTGeom{
                 lstate.Deserialize(bounds, sgl_bounds);
                 // TODO: sanity check bounds
                 auto bounds_bbox = sgl::extent_xy::smallest();
-		        if (sgl::ops::get_total_extent_xy(sgl_bounds, bounds_bbox) != 5) {
+                if (sgl::ops::get_total_extent_xy(sgl_bounds, bounds_bbox) != 5) {
                     throw InvalidInputException("ST_AsMVTGeom: invalid bounds geometry");
                 }
                 double bounds_width = bounds_bbox.max.x - bounds_bbox.min.x;
@@ -198,49 +198,69 @@ struct ST_AsMVTGeom{
 
                 sgl::geometry mvt_geom;
                 sgl::vertex_xy input_vertex;
-                sgl::vertex_xy output_vertex;
+                sgl::vertex_xy* output_vertices = new sgl::vertex_xy[sgl_geom.get_vertex_count()]; 
                 switch (sgl_geom.get_type()) {
                     case sgl::geometry_type::POINT:
                         input_vertex = sgl_geom.get_vertex_xy(0);
-                        output_vertex.x = nearbyint((input_vertex.x - bounds_bbox.min.x) * 4096.0 / bounds_width);
-                        if (output_vertex.x == -0) {
-                            output_vertex.x = 0;
+                        output_vertices[0].x = nearbyint((input_vertex.x - bounds_bbox.min.x) * 4096.0 / bounds_width);
+                        if (output_vertices[0].x == -0) {
+                            output_vertices[0].x = 0;
                         }
-                        output_vertex.y = nearbyint(4096 - ((input_vertex.y - bounds_bbox.min.y) * 4096.0 / bounds_height));
-                        if (output_vertex.y == -0) {
-                            output_vertex.y = 0;
+                        output_vertices[0].y = nearbyint(4096 - ((input_vertex.y - bounds_bbox.min.y) * 4096.0 / bounds_height));
+                        if (output_vertices[0].y == -0) {
+                            output_vertices[0].y = 0;
                         }
-                        if ((output_vertex.x > -256) && (output_vertex.x < (4096 + 256)) && (output_vertex.y > -256) && (output_vertex.y < 4096 + 256)) {
+                        if ((output_vertices[0].x > -256) && (output_vertices[0].x < (4096 + 256)) && (output_vertices[0].y > -256) && (output_vertices[0].y < 4096 + 256)) {
                             mvt_geom.set_type(sgl::geometry_type::POINT);
-                            mvt_geom.set_vertex_array(&output_vertex, 1);
+                            mvt_geom.set_vertex_array(output_vertices, 1);
                         } else {
                             mask.SetInvalid(row_idx);
+                            delete[] output_vertices;
                             return string_t {};
                         }
+                        break;
+                    case sgl::geometry_type::LINESTRING:
+                        for (uint32_t i = 0; i < sgl_geom.get_vertex_count(); i++) {
+                            input_vertex = sgl_geom.get_vertex_xy(i);
+                            output_vertices[i].x = nearbyint((input_vertex.x - bounds_bbox.min.x) * 4096.0 / bounds_width);
+                            if (output_vertices[i].x == -0) {
+                                output_vertices[i].x = 0;
+                            }
+                            output_vertices[i].y = nearbyint(4096 - ((input_vertex.y - bounds_bbox.min.y) * 4096.0 / bounds_height));
+                            if (output_vertices[i].y == -0) {
+                                output_vertices[i].y = 0;
+                            }
+                            // TODO: clip linestring
+                        }
+                        mvt_geom.set_type(sgl::geometry_type::LINESTRING);
+                        mvt_geom.set_vertex_array(output_vertices, sgl_geom.get_vertex_count());
                         break;
                     default:
                         printf("Unsupported geometry type: %u\n", (uint8_t)sgl_geom.get_type());
                         mask.SetInvalid(row_idx);
+                        delete[] output_vertices;
                         return string_t {};
                 }
 
-            // TODO: affine transformation into tile coordinate space
-            // There is an method for this:
-            // void affine_transform(sgl::allocator *alloc, sgl::geometry *geom, const sgl::affine_matrix *matrix);
-            // But we can probably do it directly
+                // TODO: affine transformation into tile coordinate space
+                // There is an method for this:
+                // void affine_transform(sgl::allocator *alloc, sgl::geometry *geom, const sgl::affine_matrix *matrix);
+                // But we can probably do it directly
 
-            // TODO: Snap to integer precision, removing duplicate points
+                // TODO: Snap to integer precision, removing duplicate points
 
-            // TODO: Remove points on straight lines
+                // TODO: Remove points on straight lines
 
-            // TODO: Remove duplicates in multipoints
+                // TODO: Remove duplicates in multipoints
 
-            // TODO: check for empty geometry
+                // TODO: check for empty geometry
 
-            // TODO: clip and validate
+                // TODO: clip and validate
 
-            // TODO: check for empty geometry
-                return lstate.Serialize(result, mvt_geom);
+                // TODO: check for empty geometry
+                string_t serialised = lstate.Serialize(result, mvt_geom);
+                delete[] output_vertices;
+                return serialised;
             });
     }
 
